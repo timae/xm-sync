@@ -1,4 +1,3 @@
-cat > sync_xm_to_spotify.py << 'EOF'
 #!/usr/bin/env python3
 import os, requests
 from datetime import datetime, timedelta
