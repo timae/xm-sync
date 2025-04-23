@@ -82,6 +82,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-EOF
-
-chmod +x sync_xm_to_spotify.py
