@@ -1,111 +1,88 @@
-import os
-import requests
-import time
+cat > sync_xm_to_spotify.py << 'EOF'
+#!/usr/bin/env python3
+import os, requests
 from datetime import datetime, timedelta
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth
 
-# Configuration from environment variables
-SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
-SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
-SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI', 'http://localhost:8888/callback')
-SCOPE = 'playlist-modify-public playlist-modify-private'
-PLAYLIST_ID = os.getenv('SPOTIFY_PLAYLIST_ID')  # optional: if not set, a new playlist will be created
-XM_STATION_SLUG = 'lifewithjohnmayer'
-XM_API_BASE = 'https://xmplaylist.com/api'
+CLIENT_ID     = os.environ["SPOTIFY_CLIENT_ID"]
+CLIENT_SECRET = os.environ["SPOTIFY_CLIENT_SECRET"]
+REDIRECT_URI  = os.environ["SPOTIFY_REDIRECT_URI"]
+PLAYLIST_ID   = os.getenv("SPOTIFY_PLAYLIST_ID")  # optional
+SCOPE         = "playlist-modify-public playlist-modify-private"
 
+STATION_SLUG  = "lifewithjohnmayer"
+XM_API_BASE   = "https://xmplaylist.com/api"
 
-def get_xm_tracks(since_ms: int):
-    """
-    Fetch tracks played on the station since the given timestamp (ms).
-    """
-    url = f"{XM_API_BASE}/station/{XM_STATION_SLUG}/history"
-    params = {'since': since_ms, 'limit': 500}
-    resp = requests.get(url, params=params)
+def get_xm_tracks(since_ms):
+    resp = requests.get(f"{XM_API_BASE}/station/{STATION_SLUG}/history",
+                        params={"since": since_ms, "limit": 500})
     resp.raise_for_status()
-    return resp.json().get('tracks', [])
-
+    return resp.json().get("tracks", [])
 
 def auth_spotify():
-    """
-    Authenticate via OAuth and return Spotipy client.
-    """
     return Spotify(auth_manager=SpotifyOAuth(
-        client_id=SPOTIFY_CLIENT_ID,
-        client_secret=SPOTIFY_CLIENT_SECRET,
-        redirect_uri=SPOTIFY_REDIRECT_URI,
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET,
+        redirect_uri=REDIRECT_URI,
         scope=SCOPE
     ))
 
-
-def ensure_playlist(sp: Spotify):
-    """
-    Create a new playlist in your account if PLAYLIST_ID isn't set.
-    Returns the playlist ID to use.
-    """
+def ensure_playlist(sp):
     global PLAYLIST_ID
     if PLAYLIST_ID:
         return PLAYLIST_ID
-    user = sp.current_user()
-    user_id = user['id']
-    playlist = sp.user_playlist_create(
+    user_id = sp.current_user()["id"]
+    pl = sp.user_playlist_create(
         user_id,
-        name='Life with John Mayer - Last 12h',
+        name="Life with John Mayer – Last 12h",
         public=False,
-        description='Auto-updated playlist of last 12h from Life with John Mayer'
+        description="Auto-updated via Deploio"
     )
-    PLAYLIST_ID = playlist['id']
-    print(f"Created new playlist: {playlist['name']} (ID: {PLAYLIST_ID})")
+    PLAYLIST_ID = pl["id"]
+    print(f"Created playlist {pl['name']} ({PLAYLIST_ID})")
     return PLAYLIST_ID
 
-
-def find_spotify_uris(sp: Spotify, tracks):
-    """
-    Search Spotify for each track and return unique URIs.
-    """
+def find_uris(sp, tracks):
     uris, seen = [], set()
     for t in tracks:
-        query = f"artist:{t['artist']} track:{t['title']}"
-        results = sp.search(q=query, type='track', limit=1)
-        items = results.get('tracks', {}).get('items', [])
+        q = f"artist:{t['artist']} track:{t['title']}"
+        items = sp.search(q=q, type="track", limit=1)["tracks"]["items"]
         if items:
-            uri = items[0]['uri']
+            uri = items[0]["uri"]
             if uri not in seen:
                 seen.add(uri)
                 uris.append(uri)
     return uris
 
-
-def update_playlist(sp: Spotify, playlist_id: str, uris):
-    """
-    Replace playlist contents with new URIs (up to 100 per request).
-    """
+def update_playlist(sp, pid, uris):
     for i in range(0, len(uris), 100):
-        slice_ = uris[i:i+100]
-        if i == 0:
-            sp.playlist_replace_items(playlist_id, slice_)
+        chunk = uris[i:i+100]
+        if i==0:
+            sp.playlist_replace_items(pid, chunk)
         else:
-            sp.playlist_add_items(playlist_id, slice_)
-
+            sp.playlist_add_items(pid, chunk)
 
 def main():
-    # Calculate timestamp for 12 hours ago (ms)
     since = int((datetime.utcnow() - timedelta(hours=12)).timestamp() * 1000)
-    print(f"Fetching tracks since {datetime.utcnow() - timedelta(hours=12)} UTC...")
+    print(f"Fetching since {datetime.utcnow() - timedelta(hours=12)} UTC…")
     tracks = get_xm_tracks(since)
     if not tracks:
-        print("No new tracks found in the last 12h.")
+        print("No tracks found.")
         return
 
     sp = auth_spotify()
-    playlist_id = ensure_playlist(sp)
-    uris = find_spotify_uris(sp, tracks)
+    pid = ensure_playlist(sp)
+    uris = find_uris(sp, tracks)
     if not uris:
-        print("No matching tracks found on Spotify.")
+        print("No matches found on Spotify.")
         return
 
-    update_playlist(sp, playlist_id, uris)
-    print(f"Playlist (ID: {playlist_id}) updated with {len(uris)} tracks.")
+    update_playlist(sp, pid, uris)
+    print(f"Updated playlist {pid} with {len(uris)} tracks.")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
+EOF
+
+chmod +x sync_xm_to_spotify.py
