@@ -9,6 +9,3 @@ done &
 
 # foreground HTTP server on $PORT for health checks
 exec python -m http.server "\${PORT:-8080}"
-EOF
-
-chmod +x entrypoint.sh
