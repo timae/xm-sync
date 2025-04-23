@@ -1,4 +1,3 @@
-cat > entrypoint.sh << 'EOF'
 #!/usr/bin/env bash
 set -e
 
