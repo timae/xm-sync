@@ -1,0 +1,4 @@
+cat > requirements.txt << 'EOF'
+requests>=2.28.0
+spotipy>=2.22.0
+EOF
